@@ -3,6 +3,7 @@ import './App.css'
 import Hero from './sections/Hero'
 import AboutUS from './sections/AboutUS'
 import Marquee from './sections/Marquee'
+import Work from './sections/Work'
 
 function App() {
   return (
@@ -10,6 +11,7 @@ function App() {
     <Hero/>
     <AboutUS/>
     <Marquee/>
+    <Work/>
     </>
   )
 }
