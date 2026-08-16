@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { gsap } from "gsap";
 
 const navLinks = [
@@ -90,7 +90,7 @@ const Navbar = () => {
           >
             <img
               src="/logo.png"
-              alt="Logo"
+              alt="Awwwebs Logo"
               className="h-8 w-auto object-contain transition-transform duration-300 md:h-10"
             />
           </a>

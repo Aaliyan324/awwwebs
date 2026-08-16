@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
@@ -200,6 +200,7 @@ const Work = () => {
 
   return (
     <section
+      id="work"
       ref={containerRef}
       className="relative min-h-screen overflow-hidden bg-[var(--bg-primary)] px-6 py-28 md:px-16"
     >

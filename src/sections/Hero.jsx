@@ -1,7 +1,7 @@
-import React, { useRef, useEffect, useState } from "react";
-import Spline from "@splinetool/react-spline";
+import React, { useRef, useEffect, useState, useCallback, Suspense } from "react";
 import gsap from "gsap";
-import Lenis from "lenis";
+
+const Spline = React.lazy(() => import("@splinetool/react-spline"));
 
 const testimonialsData = [
   {
@@ -27,12 +27,12 @@ const testimonialsData = [
   },
 ];
 
-const Hero = () => {
+const Hero = ({ onSplineLoad, timelineRef }) => {
   const heroRef = useRef(null);
-  const timelineRef = useRef(null);
   const testimonialCardRef = useRef(null);
-
+  const splineAppRef = useRef(null); // Store Spline instance reference
   const [activeTestimonialIndex, setActiveTestimonialIndex] = useState(0);
+  const [isIntersecting, setIsIntersecting] = useState(true);
 
   // References for GSAP targets
   const headingRef = useRef(null);
@@ -42,251 +42,242 @@ const Hero = () => {
   const hudLeftRef = useRef(null);
   const hudRightRef = useRef(null);
 
-  // 1. Cycle through testimonials with smooth GSAP transition
+  // 1. Observe Intersection to pause/play Spline without unmounting
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (!testimonialCardRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const visible = entry.isIntersecting;
+        setIsIntersecting(visible);
 
-      // Fade out current testimonial
-      gsap.to(testimonialCardRef.current, {
-        opacity: 0,
-        y: -10,
-        duration: 0.4,
-        ease: "power2.in",
-        onComplete: () => {
-          setActiveTestimonialIndex((prevIndex) => (prevIndex + 1) % testimonialsData.length);
-          // Fade in new testimonial
-          gsap.fromTo(
-            testimonialCardRef.current,
-            { opacity: 0, y: 15 },
-            { opacity: 1, y: 0, duration: 0.5, ease: "power2.out" }
-          );
-        },
-      });
-    }, 5000);
+        // Pause Spline rendering loop when out of view, resume when visible
+        if (splineAppRef.current) {
+          if (visible && typeof splineAppRef.current.play === "function") {
+            splineAppRef.current.play();
+          } else if (!visible && typeof splineAppRef.current.stop === "function") {
+            splineAppRef.current.stop();
+          }
+        }
+      },
+      { threshold: 0.1 }
+    );
 
-    return () => clearInterval(interval);
+    if (heroRef.current) observer.observe(heroRef.current);
+    return () => observer.disconnect();
   }, []);
 
+  // 2. Hardware Performance Adjustments & Ref Storage
+  const handleSplineOnLoad = useCallback(
+    (splineApp) => {
+      splineAppRef.current = splineApp;
+
+      const isLowEnd = typeof navigator !== "undefined" && (navigator.hardwareConcurrency || 4) <= 4;
+      if (isLowEnd && splineApp?.setQuality) {
+        splineApp.setQuality("low");
+      }
+
+      if (onSplineLoad) onSplineLoad(splineApp);
+    },
+    [onSplineLoad]
+  );
+
+  // 3. Lightweight Testimonial Switcher
+  const handleTestimonialChange = useCallback(
+    (nextIndex) => {
+      if (!testimonialCardRef.current || nextIndex === activeTestimonialIndex) return;
+
+      gsap.to(testimonialCardRef.current, {
+        opacity: 0,
+        duration: 0.2,
+        onComplete: () => {
+          setActiveTestimonialIndex(nextIndex);
+          gsap.to(testimonialCardRef.current, { opacity: 1, duration: 0.25 });
+        },
+      });
+    },
+    [activeTestimonialIndex]
+  );
+
   useEffect(() => {
-    // 2. Initialize Lenis Smooth Scroll
-    const lenis = new Lenis({
-      duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      smoothWheel: true,
-    });
+    const interval = setInterval(() => {
+      const nextIdx = (activeTestimonialIndex + 1) % testimonialsData.length;
+      handleTestimonialChange(nextIdx);
+    }, 6000);
 
-    function updateLenis(time) {
-      lenis.raf(time * 1000);
-    }
-    gsap.ticker.add(updateLenis);
-    gsap.ticker.lagSmoothing(0);
+    return () => clearInterval(interval);
+  }, [activeTestimonialIndex, handleTestimonialChange]);
 
-    // 3. Set up paused GSAP Context and Intro Timeline
+  // 4. GSAP Setup
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
     const ctx = gsap.context(() => {
-      timelineRef.current = gsap.timeline({
+      if (prefersReducedMotion) return;
+
+      const tl = gsap.timeline({
         paused: true,
-        delay: 2.6,
-        defaults: { ease: "power3.out", duration: 1.2 },
+        defaults: { ease: "power2.out", duration: 0.8 },
       });
 
-      timelineRef.current
-        .fromTo(
-          headingRef.current.children,
-          { y: 50, opacity: 0 },
-          { y: 0, opacity: 1, stagger: 0.15 }
-        )
+      tl.fromTo(
+        headingRef.current?.children || [],
+        { y: 30, opacity: 0 },
+        { y: 0, opacity: 1, stagger: 0.1 }
+      )
         .fromTo(
           paragraphRef.current,
-          { y: 30, opacity: 0 },
+          { y: 20, opacity: 0 },
           { y: 0, opacity: 1 },
-          "-=0.8"
+          "-=0.5"
         )
         .fromTo(
-          buttonsRef.current.children,
-          { y: 25, opacity: 0, scale: 0.95 },
-          { y: 0, opacity: 1, scale: 1, stagger: 0.15 },
-          "-=0.8"
+          buttonsRef.current?.children || [],
+          { y: 15, opacity: 0 },
+          { y: 0, opacity: 1, stagger: 0.1 },
+          "-=0.5"
         )
         .fromTo(
           testimonialContainerRef.current,
-          { x: 50, opacity: 0 },
-          { x: 0, opacity: 1 },
-          "-=0.8"
+          { opacity: 0 },
+          { opacity: 1, duration: 0.4 },
+          "-=0.3"
         )
         .fromTo(
           [hudLeftRef.current, hudRightRef.current],
-          { y: 20, opacity: 0 },
-          { y: 0, opacity: 1, stagger: 0.2 },
-          "-=0.6"
+          { opacity: 0 },
+          { opacity: 1, duration: 0.3 },
+          "-=0.2"
         );
+
+      if (timelineRef) {
+        timelineRef.current = tl;
+      }
     }, heroRef);
 
-    return () => {
-      ctx.revert();
-      gsap.ticker.remove(updateLenis);
-      lenis.destroy();
-    };
-  }, []);
+    return () => ctx.revert();
+  }, [timelineRef]);
 
-  const handleSplineLoad = () => {
-    if (timelineRef.current) {
-      timelineRef.current.play();
-    }
-  };
+  const activeItem = testimonialsData[activeTestimonialIndex];
 
   return (
-    <section 
-      ref={heroRef} 
-      className="relative h-screen w-full overflow-hidden bg-[var(--bg-primary)]"
+    <section
+      id="home"
+      ref={heroRef}
+      className="relative h-screen w-full overflow-hidden bg-[var(--bg-primary)] [contain:strict]"
     >
-      {/* Tactical Grid Pattern Overlay */}
-      <div 
+      {/* Background Grid */}
+      <div
         className="absolute inset-0 z-10 pointer-events-none opacity-15"
         style={{
           backgroundImage: `radial-gradient(var(--purple-primary) 1px, transparent 1px)`,
-          backgroundSize: '36px 36px'
+          backgroundSize: "36px 36px",
         }}
       />
 
-      {/* 3D Spline Canvas */}
-      <div className="absolute inset-0 z-0">
-        <Spline 
-          scene="https://prod.spline.design/b6g2OU8fYKPVwjwr/scene.splinecode" 
-          onLoad={handleSplineLoad}
-        />
+      {/* 3D Spline Canvas Container (Permanently mounted, visibility toggled) */}
+      <div
+        className={`absolute inset-0 z-0 transition-opacity duration-300 ${
+          isIntersecting ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        style={{ visibility: isIntersecting ? "visible" : "hidden" }}
+      >
+        <Suspense fallback={<div className="w-full h-full bg-[var(--bg-primary)]" />}>
+          <Spline
+            scene="https://prod.spline.design/b6g2OU8fYKPVwjwr/scene.splinecode"
+            onLoad={handleSplineOnLoad}
+          />
+        </Suspense>
       </div>
 
-      {/* Cyber/Vignette Blend Overlay */}
+      {/* Vignette Overlay */}
       <div className="absolute inset-0 z-10 pointer-events-none bg-[radial-gradient(circle_at_20%_50%,transparent_20%,var(--bg-primary)_90%)]" />
 
-      {/* Main Hero Content (Left side aligned) */}
-      <div className="absolute left-12 md:left-14 inset-y-0 z-20 pointer-events-none flex items-center max-w-4xl">
+      {/* Hero Content */}
+      <div className="absolute left-6 sm:left-12 md:left-14 inset-y-0 z-20 pointer-events-none flex items-center max-w-4xl">
         <div className="w-full flex flex-col items-start gap-6">
-          
-          {/* Heading */}
-          <h1 
+          <h1
             ref={headingRef}
-            className="heading text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-[0.95] tracking-tight text-[var(--text-primary)] uppercase drop-shadow-[0_0_35px_var(--glow-purple)]"
+            className="heading text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-extrabold leading-[0.98] tracking-tight text-[var(--text-primary)] uppercase"
           >
             <span className="block">WE BUILD DIGITAL EXPERIENCES</span>
             <span className="block">THAT MOVE BUSINESSES</span>
             <span className="block">FORWARD</span>
           </h1>
 
-          {/* Subtitle */}
-          <p 
+          <p
             ref={paragraphRef}
-            className="paragraph text-lg md:text-2xl text-[var(--text-secondary)] tracking-wider max-w-xl font-medium"
+            className="paragraph text-base md:text-xl text-[var(--text-secondary)] tracking-wider max-w-xl font-medium"
           >
             HIGH-PERFORMANCE WEBSITES & INTERACTIVE 3D PLATFORMS ENGINEERED FOR SCALING BRANDS.
           </p>
 
-          {/* Buttons Area */}
-          <div 
+          <div
             ref={buttonsRef}
-            className="pointer-events-auto flex flex-wrap items-center gap-6 pt-6"
+            className="pointer-events-auto flex flex-wrap items-center gap-4 pt-4"
           >
-            <button 
-              className="group relative inline-flex items-center justify-center font-mono text-base tracking-widest font-bold text-[var(--text-primary)] uppercase transition-all duration-300 active:scale-95"
-            >
-              <span className="absolute -inset-1 bg-[var(--gradient-brand)] opacity-70 blur-lg transition-opacity duration-300 group-hover:opacity-100" />
-              
-              <span 
-                className="relative z-10 flex items-center gap-4 px-9 py-4 bg-[var(--bg-card)] border-2 border-[var(--purple-primary)] transition-colors duration-300 group-hover:bg-[var(--bg-tertiary)] group-hover:border-[var(--purple-light)]"
-                style={{
-                  clipPath: "polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px))"
-                }}
-              >
+            <button className="group relative inline-flex items-center justify-center font-mono text-sm tracking-widest font-bold text-[var(--text-primary)] uppercase transition-transform duration-200 active:scale-95">
+              <span className="relative z-10 flex items-center gap-3 px-8 py-3.5 bg-[var(--bg-card)] border-2 border-[var(--purple-primary)] transition-colors duration-200 group-hover:bg-[var(--bg-tertiary)]">
                 <span>LET'S TALK</span>
-                
-                <svg 
-                  className="w-5 h-5 text-[var(--purple-light)] transition-transform duration-300 group-hover:translate-x-2" 
-                  fill="none" 
-                  viewBox="0 0 24 24" 
+                <svg
+                  className="w-4 h-4 text-[var(--purple-light)] transition-transform duration-200 group-hover:translate-x-1"
+                  fill="none"
+                  viewBox="0 0 24 24"
                   stroke="currentColor"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                 </svg>
-
-                <span className="absolute top-0 right-0 w-3.5 h-3.5 bg-[var(--purple-primary)] transition-colors duration-300 group-hover:bg-[var(--purple-light)]" />
               </span>
             </button>
 
-            <button 
-              className="px-9 py-4 font-mono text-base tracking-widest uppercase font-semibold text-[var(--text-secondary)] border-2 border-[var(--border-primary)] bg-[var(--bg-primary)]/60 backdrop-blur-md transition-all duration-300 hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] hover:bg-[var(--bg-card)] hover:shadow-[0_0_20px_var(--glow-soft)] active:scale-95"
-              style={{
-                clipPath: "polygon(16px 0, 100% 0, 100% calc(100% - 16px), calc(100% - 16px) 100%, 0 100%, 0 16px)"
-              }}
-            >
+            <button className="px-8 py-3.5 font-mono text-sm tracking-widest uppercase font-semibold text-[var(--text-secondary)] border border-[var(--border-primary)] bg-[var(--bg-primary)] transition-colors duration-200 hover:text-[var(--text-primary)] hover:border-[var(--border-hover)] active:scale-95">
               EXPLORE WORK
             </button>
           </div>
-
         </div>
       </div>
 
-      {/* Far Right Dynamic Testimonial Container */}
-      <div 
+      {/* Testimonial Box */}
+      <div
         ref={testimonialContainerRef}
-        className="absolute top-1/2 -translate-y-1/2 right-8 md:right-12 z-20 pointer-events-auto hidden xl:flex flex-col gap-3 w-80 p-6 bg-[var(--bg-card)]/80 backdrop-blur-xl border border-[var(--border-primary)] shadow-[0_0_35px_rgba(0,0,0,0.6)] transition-colors hover:border-[var(--purple-primary)]"
-        style={{
-          clipPath: "polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 20px 100%, 0 calc(100% - 20px))"
-        }}
+        className="absolute top-1/2 -translate-y-1/2 right-8 md:right-12 z-20 pointer-events-auto hidden xl:flex flex-col gap-3 w-80 p-5 bg-[var(--bg-card)]/90 border border-[var(--border-primary)] shadow-lg"
       >
-        {/* Rating Stars & Header Tag */}
-        <div className="flex items-center justify-between border-b border-[var(--border-primary)]/40 pb-3">
-          <div className="flex text-[var(--purple-light)] text-sm gap-1">
-            ★★★★★
-          </div>
+        <div className="flex items-center justify-between border-b border-[var(--border-primary)]/40 pb-2.5">
+          <div className="flex text-[var(--purple-light)] text-xs gap-1">★★★★★</div>
           <span className="font-mono text-[10px] tracking-widest text-[var(--purple-primary)] uppercase bg-[var(--purple-primary)]/10 px-2 py-0.5 border border-[var(--purple-primary)]/30">
             REVIEW
           </span>
         </div>
 
-        {/* Mapped Testimonials (Rendered based on active index) */}
-        {testimonialsData.map((item, index) => {
-          if (index !== activeTestimonialIndex) return null;
+        <div ref={testimonialCardRef} className="flex flex-col gap-3 pt-1">
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed italic font-sans min-h-[56px]">
+            "{activeItem.quote}"
+          </p>
 
-          return (
-            <div 
-              key={item.id} 
-              ref={testimonialCardRef}
-              className="flex flex-col gap-4 pt-1"
-            >
-              <p className="text-xs md:text-sm text-[var(--text-secondary)] leading-relaxed italic font-sans min-h-[64px]">
-                "{item.quote}"
-              </p>
-
-              <div className="flex items-center justify-between pt-2 border-t border-[var(--border-primary)]/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[var(--purple-primary)]/20 border border-[var(--purple-primary)] flex items-center justify-center font-mono text-xs font-bold text-[var(--purple-light)]">
-                    {item.initials}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-[var(--text-primary)] tracking-wide uppercase">
-                      {item.author}
-                    </h4>
-                    <p className="font-mono text-[10px] text-[var(--text-muted)] uppercase">
-                      {item.role}
-                    </p>
-                  </div>
-                </div>
+          <div className="flex items-center justify-between pt-2 border-t border-[var(--border-primary)]/50">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-full bg-[var(--purple-primary)]/20 border border-[var(--purple-primary)] flex items-center justify-center font-mono text-[11px] font-bold text-[var(--purple-light)]">
+                {activeItem.initials}
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-[var(--text-primary)] tracking-wide uppercase">
+                  {activeItem.author}
+                </h4>
+                <p className="font-mono text-[9px] text-[var(--text-muted)] uppercase">
+                  {activeItem.role}
+                </p>
               </div>
             </div>
-          );
-        })}
+          </div>
+        </div>
 
-        {/* Carousel Indicator Dots */}
-        <div className="flex items-center justify-center gap-1.5 pt-2">
+        <div className="flex items-center justify-center gap-1.5 pt-1">
           {testimonialsData.map((_, dotIndex) => (
             <button
               key={dotIndex}
-              onClick={() => setActiveTestimonialIndex(dotIndex)}
-              className={`h-1.5 rounded-full transition-all duration-300 ${
-                dotIndex === activeTestimonialIndex 
-                  ? "w-6 bg-[var(--purple-light)]" 
-                  : "w-1.5 bg-[var(--border-primary)] hover:bg-[var(--text-muted)]"
+              onClick={() => handleTestimonialChange(dotIndex)}
+              className={`h-1 rounded-full transition-all duration-200 ${
+                dotIndex === activeTestimonialIndex
+                  ? "w-5 bg-[var(--purple-light)]"
+                  : "w-1 bg-[var(--border-primary)]"
               }`}
               aria-label={`Go to testimonial ${dotIndex + 1}`}
             />
@@ -294,21 +285,21 @@ const Hero = () => {
         </div>
       </div>
 
-      {/* Cyber HUD Accents */}
-      <div 
+      {/* HUD Accents */}
+      <div
         ref={hudLeftRef}
-        className="absolute bottom-10 left-12 md:left-14 z-20 pointer-events-none hidden md:flex items-center gap-3 font-mono text-xs text-[var(--text-muted)]"
+        className="absolute bottom-8 left-12 md:left-14 z-20 pointer-events-none hidden md:flex items-center gap-3 font-mono text-xs text-[var(--text-muted)]"
       >
-        <span className="w-2 h-2 bg-[var(--purple-primary)] animate-pulse" />
+        <span className="w-2 h-2 bg-[var(--purple-primary)]" />
         <span>SYS.STATUS: OPERATIONAL</span>
       </div>
-      
-      <div 
+
+      <div
         ref={hudRightRef}
-        className="absolute bottom-10 right-8 md:right-12 z-20 pointer-events-none hidden md:flex items-center gap-3 font-mono text-xs text-[var(--text-muted)]"
+        className="absolute bottom-8 right-8 md:right-12 z-20 pointer-events-none hidden md:flex items-center gap-3 font-mono text-xs text-[var(--text-muted)]"
       >
         <span>AGENCY // 2026</span>
-        <span className="w-12 h-[1px] bg-[var(--border-primary)]" />
+        <span className="w-8 h-[1px] bg-[var(--border-primary)]" />
       </div>
     </section>
   );

@@ -1,63 +1,67 @@
-import React, { useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { gsap } from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 gsap.registerPlugin(ScrollTrigger)
 
+const text = "We’re a creative web agency focused on building modern, interactive, and high-performance websites that look stunning and work flawlessly. From bold landing pages to complete business websites, we blend clean development with thoughtful design, smooth animations, and a touch of personality."
+
 const AboutUS = () => {
   const headingRef = useRef(null)
   const paragraphRef = useRef(null)
 
-  const text = "We’re a creative web agency focused on building modern, interactive, and high-performance websites that look stunning and work flawlessly. From bold landing pages to complete business websites, we blend clean development with thoughtful design, smooth animations, and a touch of personality."
-
   useEffect(() => {
+    // Respect user reduced motion settings to preserve low-end CPU cycles
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
     const ctx = gsap.context(() => {
-      // Heading: Blur-in
+      if (prefersReducedMotion) {
+        gsap.set([headingRef.current, paragraphRef.current.querySelectorAll('.word')], { opacity: 1, x: 0, y: 0 })
+        return
+      }
+
+      // Heading: GPU-accelerated reveal (opacity + y shift instead of heavy live filter blur)
       gsap.fromTo(
         headingRef.current,
         {
-          filter: 'blur(12px)',
           opacity: 0,
-          y: 20
+          y: 24,
         },
         {
-          filter: 'blur(0px)',
           opacity: 1,
           y: 0,
-          duration: 1.2,
-          ease: 'power3.out',
+          duration: 0.9,
+          ease: 'power2.out',
           scrollTrigger: {
             trigger: headingRef.current,
-            start: 'top 80%',
-            toggleActions: 'play none none reverse'
-          }
+            start: 'top 85%',
+            toggleActions: 'play none none reverse',
+          },
         }
       )
 
-      // Paragraph: Word-by-word from left to right with blur effect
+      // Paragraph: Word-by-word reveal using lightweight transforms
       const words = paragraphRef.current.querySelectorAll('.word')
 
       gsap.fromTo(
         words,
         {
-          filter: 'blur(10px)',
           opacity: 0,
-          x: -30,
-          y: 20
+          x: -16,
+          y: 12,
         },
         {
-          filter: 'blur(0px)',
           opacity: 1,
           x: 0,
           y: 0,
-          duration: 0.8,
-          stagger: 0.04, // Controls the delay between each word
-          ease: 'power3.out',
+          duration: 0.5,
+          stagger: 0.025, // Optimized stagger speed for smooth 60fps frame pacing
+          ease: 'power2.out',
           scrollTrigger: {
             trigger: paragraphRef.current,
             start: 'top 85%',
-            toggleActions: 'play none none reverse'
-          }
+            toggleActions: 'play none none reverse',
+          },
         }
       )
     })
@@ -66,28 +70,31 @@ const AboutUS = () => {
   }, [])
 
   return (
-    <div className='mt-12 min-h-[40vh] px-20 overflow-hidden'>
+    <section id="about" className="mt-12 min-h-[40vh] px-6 md:px-20 overflow-hidden [contain:content]">
       <div>
         <h1
           ref={headingRef}
-          className='heading text-7xl font-bold text-[var(--text-primary)]'
+          className="heading text-5xl md:text-7xl font-bold text-[var(--text-primary)] [will-change:transform,opacity]"
         >
           About Us
         </h1>
       </div>
-      <div className='mt-6'>
+      <div className="mt-6">
         <p
           ref={paragraphRef}
-          className='paragraph text-4xl tracking-wide text-[var(--text-secondary)] flex flex-wrap gap-x-3 gap-y-1'
+          className="paragraph text-2xl md:text-4xl tracking-wide text-[var(--text-secondary)] flex flex-wrap gap-x-3 gap-y-1"
         >
           {text.split(' ').map((word, index) => (
-            <span key={index} className='word inline-block will-change-transform'>
+            <span
+              key={index}
+              className="word inline-block [will-change:transform,opacity]"
+            >
               {word}
             </span>
           ))}
         </p>
       </div>
-    </div>
+    </section>
   )
 }
 

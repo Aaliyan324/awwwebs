@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 
@@ -181,7 +181,7 @@ const Contact = () => {
             >
               <img
                 src="/logo.png"
-                alt="Logo"
+                alt="Awwwebs Logo"
                 className="h-9 w-auto object-contain transition-transform duration-300 hover:scale-105 md:h-11"
               />
             </a>
